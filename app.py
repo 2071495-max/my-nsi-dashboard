@@ -13,7 +13,7 @@ st.title("📊 NSI (Net Spread Index) 미국 주식 모니터링 시스템")
 st.sidebar.header("⚙️ 설정 파라미터")
 
 favorite_stocks = {
-    "로켓랩 (RKLB)": "RKLB",  # 퀵 서치 기본값을 로켓랩으로 전면 배치
+    "로켓랩 (RKLB)": "RKLB",
     "엔비디아 (NVDA)": "NVDA",
     "테슬라 (TSLA)": "TSLA",
     "마이크론 (MU)": "MU",
@@ -35,7 +35,6 @@ favorite_stocks = {
 selected_korean = st.sidebar.selectbox("🌟 자주 보는 종목 퀵 서치 (한글)", list(favorite_stocks.keys()))
 default_ticker = favorite_stocks[selected_korean]
 
-# 🚨 [티커 로딩 버그 수정] default_ticker가 비어있거나 누락되면 무조건 'RKLB'가 작동하도록 철저하게 방어
 if not default_ticker:
     default_ticker = "RKLB"
 
@@ -150,7 +149,7 @@ else:
     st.markdown("---")
     
     # ----------------------------------------------------
-    # [과거 20일 신호 복기 및 백트래킹 로그 데이터프레임 빌드]
+    # [과거 20일 신호 복기 데이터프레임 빌드]
     # ----------------------------------------------------
     st.subheader("⏰ 과거 20일간의 매매 신호 추적 및 현재 수익률 복기")
     
@@ -213,7 +212,7 @@ else:
                 "💵 당시 주가": f"${past_price:.2f}",
                 "📈 현재 성적": f"{rtn_label}: {rtn:+.2f}%",
                 "_bg_color": bg_color,
-                "_is_positive": rtn >= 0
+                "_is_positive": bool(rtn >= 0)  # 🚨 [안전성 업그레이드] 확실하게 파이썬 순정 Boolean형태로 변환하여 매핑 버그 차단
             })
 
     if not rows:
@@ -221,21 +220,28 @@ else:
     else:
         summary_df = pd.DataFrame(list(reversed(rows)))
         
+        # 🆕 [Styler 함수 전면 교체] 행 인덱스가 깨져도 데이터 컬럼값을 직접 타격하도록 람다 함수 기반으로 수정
         def apply_row_styles(df_data):
             style_matrix = pd.DataFrame('', index=df_data.index, columns=df_data.columns)
-            for col in style_matrix.columns:
-                style_matrix[col] = df_data['_bg_color'].apply(lambda x: f"background-color: {x};")
-            style_matrix['📈 현재 성적'] = df_data.apply(
-                lambda r: f"background-color: {r['_bg_color']}; color: {'#27ae60' if r['_is_positive'] else '#c0392b'}; font-weight: bold;", 
-                axis=1
-            )
+            
+            # 1. 행별 배경색 지정
+            for i in range(len(df_data)):
+                row_bg = df_data.iloc[i]['_bg_color']
+                is_pos = df_data.iloc[i]['_is_positive']
+                
+                # 기본 배경색 지정
+                style_matrix.iloc[i] = f"background-color: {row_bg};"
+                
+                # '현재 성적' 셀은 플러스/마이너스 여부에 따라 텍스트 컬러 오버레이
+                text_color = '#27ae60' if is_pos else '#c0392b'
+                style_matrix.iloc[i, style_matrix.columns.get_loc('📈 현재 성적')] = f"background-color: {row_bg}; color: {text_color}; font-weight: bold;"
+                
             return style_matrix
 
         final_styler = summary_df.style.apply(apply_row_styles, axis=None) \
             .hide(axis="index") \
             .hide(subset=["_bg_color", "_is_positive"], axis="columns")
 
-        # 🆕 [체크 표시 제거] on_select="ignore" 옵션을 추가하여 우측 다단 체크박스 열을 강제로 삭제
         st.dataframe(final_styler, use_container_width=True, on_select="ignore")
 
     st.markdown("---")
