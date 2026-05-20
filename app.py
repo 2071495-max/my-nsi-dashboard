@@ -13,13 +13,12 @@ st.title("📊 NSI (Net Spread Index) 미국 주식 모니터링 시스템")
 st.sidebar.header("⚙️ 설정 파라미터")
 
 favorite_stocks = {
-    "직접 티커 입력하기": "",
-    "로켓랩 (RKLB)": "RKLB",
+    "로켓랩 (RKLB)": "RKLB",  # 퀵 서치 기본값을 로켓랩으로 전면 배치
     "엔비디아 (NVDA)": "NVDA",
     "테슬라 (TSLA)": "TSLA",
     "마이크론 (MU)": "MU",
     "팔란티어 (PLTR)": "PLTR",
-    "아마zon (AMZN)": "AMZN",
+    "아마존 (AMZN)": "AMZN",
     "알파벳C (GOOG)": "GOOG",
     "AMD (AMD)": "AMD",
     "인텔 (INTC)": "INTC",
@@ -29,13 +28,18 @@ favorite_stocks = {
     "아이렌 (IREN)": "IREN",
     "샌디스크/웨스턴디지털 (WDC)": "WDC",
     "QQQ 테크 ETF": "QQQ",
-    "VOO S&P500 ETF": "VOO"
+    "VOO S&P500 ETF": "VOO",
+    "직접 티커 입력하기": ""
 }
 
 selected_korean = st.sidebar.selectbox("🌟 자주 보는 종목 퀵 서치 (한글)", list(favorite_stocks.keys()))
 default_ticker = favorite_stocks[selected_korean]
 
-ticker = st.sidebar.text_input("미국 주식 티커 입력 (영문 대문자)", value=default_ticker if default_ticker else "RKLB").upper()
+# 🚨 [티커 로딩 버그 수정] default_ticker가 비어있거나 누락되면 무조건 'RKLB'가 작동하도록 철저하게 방어
+if not default_ticker:
+    default_ticker = "RKLB"
+
+ticker = st.sidebar.text_input("미국 주식 티커 입력 (영문 대문자)", value=default_ticker).upper()
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📈 알고리즘 엔진 튜닝")
@@ -146,7 +150,7 @@ else:
     st.markdown("---")
     
     # ----------------------------------------------------
-    # 🆕 [오류율 0%로 개편된 과거 신호 복기 로직]
+    # [과거 20일 신호 복기 및 백트래킹 로그 데이터프레임 빌드]
     # ----------------------------------------------------
     st.subheader("⏰ 과거 20일간의 매매 신호 추적 및 현재 수익률 복기")
     
@@ -163,7 +167,7 @@ else:
         d_upper = float(t_day['NSI_Upper'])
         
         d_type = ""
-        bg_color = "#ffffff"  # 기본 하얀색
+        bg_color = "#ffffff"
         
         d_t_nsi = d_nsi
         d_y_nsi = float(y_day['NSI'])
@@ -177,16 +181,16 @@ else:
         
         if b_cond_A or b_cond_B:
             d_type = "🟢 매수 컨펌"
-            bg_color = "#e8f8f5"  # 연초록
+            bg_color = "#e8f8f5"
         elif s_cond_A or s_cond_B:
             d_type = "🔴 매도 컨펌"
-            bg_color = "#fce4d6"  # 연분홍
+            bg_color = "#fce4d6"
         elif (d_t_nsi < d_lower) or ((d_y_nsi < 0) and (d_t_nsi > d_y_nsi)):
             d_type = "🔸 매수 대기"
-            bg_color = "#fef9e7"  # 연노랑
+            bg_color = "#fef9e7"
         elif (d_t_nsi > d_upper) or ((d_y_nsi > 0) and (d_t_nsi < d_y_nsi)):
             d_type = "🔹 매도 대기"
-            bg_color = "#f5eef8"  # 연보라
+            bg_color = "#f5eef8"
             
         if d_type != "":
             past_price = float(t_day['Close'])
@@ -201,7 +205,6 @@ else:
             date_str = t_day.name.strftime('%Y-%m-%d')
             target_band = d_upper if "매도" in d_type else d_lower
             
-            # 문자열 포맷팅을 데이터 생성 단계에서 미리 완벽하게 처리 (Styler 버그 원천 봉쇄)
             rows.append({
                 "📅 발생 일자": date_str,
                 "🚦 신호 구분": d_type,
@@ -209,8 +212,8 @@ else:
                 "🎯 기준선": f"{target_band:.2f}",
                 "💵 당시 주가": f"${past_price:.2f}",
                 "📈 현재 성적": f"{rtn_label}: {rtn:+.2f}%",
-                "_bg_color": bg_color,        # 스타일링용 숨김 변수
-                "_is_positive": rtn >= 0      # 글자색상용 숨김 변수
+                "_bg_color": bg_color,
+                "_is_positive": rtn >= 0
             })
 
     if not rows:
@@ -218,25 +221,22 @@ else:
     else:
         summary_df = pd.DataFrame(list(reversed(rows)))
         
-        # 🆕 인덱스나 값 중복에 절대 깨지지 않는 안전한 행/열 커스텀 스타일러 정의
         def apply_row_styles(df_data):
             style_matrix = pd.DataFrame('', index=df_data.index, columns=df_data.columns)
-            # 1. 배경색 입히기
             for col in style_matrix.columns:
                 style_matrix[col] = df_data['_bg_color'].apply(lambda x: f"background-color: {x};")
-            # 2. '현재 성적' 컬럼에만 수익률 양수/음수 판단하여 글자 색상 덮어쓰기
             style_matrix['📈 현재 성적'] = df_data.apply(
                 lambda r: f"background-color: {r['_bg_color']}; color: {'#27ae60' if r['_is_positive'] else '#c0392b'}; font-weight: bold;", 
                 axis=1
             )
             return style_matrix
 
-        # 히든 필드 제외하고 렌더링
         final_styler = summary_df.style.apply(apply_row_styles, axis=None) \
             .hide(axis="index") \
             .hide(subset=["_bg_color", "_is_positive"], axis="columns")
 
-        st.dataframe(final_styler, use_container_width=True)
+        # 🆕 [체크 표시 제거] on_select="ignore" 옵션을 추가하여 우측 다단 체크박스 열을 강제로 삭제
+        st.dataframe(final_styler, use_container_width=True, on_select="ignore")
 
     st.markdown("---")
     
