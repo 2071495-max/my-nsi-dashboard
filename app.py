@@ -9,10 +9,9 @@ from plotly.subplots import make_subplots
 st.set_page_config(page_title="NSI 그물망 매매 대시보드", layout="wide")
 st.title("📊 NSI (Net Spread Index) 미국 주식 모니터링 시스템")
 
-# 2. [🆕 고도화] 사이드바 제어 영역 및 한글-티커 매칭 시스템
+# 2. 사이드바 제어 영역 및 한글-티커 매칭 시스템
 st.sidebar.header("⚙️ 설정 파라미터")
 
-# 자주 보는 회사 한글 - 영어 티커 매칭 딕셔너리 (샌디스크는 현재 Western Digital인 WDC로 추적)
 favorite_stocks = {
     "직접 티커 입력하기": "",
     "테슬라 (TSLA)": "TSLA",
@@ -33,11 +32,9 @@ favorite_stocks = {
     "VOO S&P500 ETF": "VOO"
 }
 
-# 2-1. 한글 퀵 셀렉트 박스
 selected_korean = st.sidebar.selectbox("🌟 자주 보는 종목 퀵 서치 (한글)", list(favorite_stocks.keys()))
 default_ticker = favorite_stocks[selected_korean]
 
-# 2-2. 실제 분석할 티커 입력창 (한글 선택 시 자동 주입되며, 직접 입력도 가능)
 ticker = st.sidebar.text_input("미국 주식 티커 입력 (영문 대문자)", value=default_ticker if default_ticker else "TSLA").upper()
 
 st.sidebar.markdown("---")
@@ -46,7 +43,6 @@ period = st.sidebar.selectbox("데이터 조회 기간", ["1y", "2y", "5y"], ind
 nsi_window = st.sidebar.slider("NSI 평균 기준일수 (과열 판단용)", 10, 60, 20)
 bb_std = st.sidebar.slider("볼린저 밴드 표준편차 배수", 1.0, 3.0, 1.5, step=0.1)
 
-# 💡 [추천 아이디어 ② 반영] 그물망 최대 범위 커스텀 설정
 st.sidebar.markdown("---")
 st.sidebar.subheader("🕸️ 그물망 구조 제어")
 max_ma = st.sidebar.slider("그물망 최대 장기 이평선 (일)", 40, 200, 60, step=10)
@@ -64,7 +60,6 @@ def load_and_calc_nsi(ticker, period, nsi_window, bb_std, max_ma, ma_interval):
     
     df = df.squeeze()
     
-    # [아이디어 ②] 사용자가 지정한 간격과 최대 범위로 동적 그물망 구성
     ma_days = list(range(5, max_ma + ma_interval, ma_interval))
     ma_cols = []
     for day in ma_days:
@@ -72,9 +67,8 @@ def load_and_calc_nsi(ticker, period, nsi_window, bb_std, max_ma, ma_interval):
         df[col_name] = df['Close'].rolling(window=day).mean()
         ma_cols.append(col_name)
     
-    # NSI 연산 (동적 이평선 배열 기반)
     ma_std = df[ma_cols].std(axis=1)
-    df['MA_20'] = df['Close'].rolling(window=20).mean() # 대세 기준선 강제 생성
+    df['MA_20'] = df['Close'].rolling(window=20).mean()
     raw_nsi = (ma_std / df['MA_20']) * 100
     
     direction = np.where(df['Close'] >= df['MA_20'], 1, -1)
@@ -85,11 +79,9 @@ def load_and_calc_nsi(ticker, period, nsi_window, bb_std, max_ma, ma_interval):
     df['NSI_Upper'] = df['NSI_MA'] + (bb_std * df['NSI_STD'])
     df['NSI_Lower'] = df['NSI_MA'] - (bb_std * df['NSI_STD'])
     
-    # 시각화에 쓰일 컬럼 식별용 리스트 저장
     df.attrs['ma_cols'] = ma_cols
     return df.dropna()
 
-# 계산 수행
 df = load_and_calc_nsi(ticker, period, nsi_window, bb_std, max_ma, ma_interval)
 
 if df.empty:
@@ -97,7 +89,6 @@ if df.empty:
 else:
     ma_cols = df.attrs['ma_cols']
     
-    # 4. 오늘의 신호 정밀 판정 (T, T-1, T-2)
     today = df.iloc[-1]
     yesterday = df.iloc[-2]
     two_days_ago = df.iloc[-3]
@@ -178,79 +169,86 @@ else:
         i_sell2 = d_nsi < float(y_day['NSI'])
         
         if w_buy1 and i_buy2:
-            d_signal = "🟩 [매수] 2일 차 최종 컨펌"
-            d_type = "매수 컨펌 (2일 차)"
+            d_type = "🟩 매수 컨펌 (2일차)"
             d_style = "bold_buy"
         elif w_sell1 and i_sell2:
-            d_signal = "🟥 [매도] 2일 차 최종 컨펌"
-            d_type = "매도 컨펌 (2일 차)"
+            d_type = "🟥 매도 컨펌 (2일차)"
             d_style = "bold_sell"
         elif (d_nsi < d_lower) and (d_nsi > float(y_day['NSI'])):
-            d_signal = "🟧 [매수 대기] 반등 1일 차"
-            d_type = "매수 대기 (1일 차)"
+            d_type = "🟧 매수 대기 (1일차)"
+            d_style = "wait_buy"
         elif (d_nsi > d_upper) and (d_nsi < float(y_day['NSI'])):
-            d_signal = "🟪 [매도 대기] 고점 1일 차"
-            d_type = "매도 대기 (1일 차)"
+            d_type = "🟪 매도 대기 (1일차)"
+            d_style = "wait_sell"
             
-        if d_signal:
+        if d_type != "":
             past_price = float(t_day['Close'])
             rtn = ((current_price - past_price) / past_price) * 100
             
-            if "매도" in d_signal:
+            if "매도" in d_type:
                 rtn = ((past_price - current_price) / past_price) * 100
                 rtn_label = "하락 방어율"
-                rtn_str = f"하락 방어(익절 효과): **{rtn:+.2f}%**"
             else:
-                rtn_label = "현재 가상 수익률"
-                rtn_str = f"현재 가상 수익률: **{rtn:+.2f}%**"
+                rtn_label = "가상 수익률"
                 
             date_str = t_day.name.strftime('%Y-%m-%d')
             log_list.append({
-                'date': date_str, 'signal': d_signal, 'type': d_type, 'price': past_price, 
-                'nsi': d_nsi, 'upper': d_upper, 'lower': d_lower, 'rtn': rtn, 'rtn_label': rtn_label, 'rtn_str': rtn_str, 'style': d_style
+                'date': date_str, 'type': d_type, 'price': past_price, 
+                'nsi': d_nsi, 'upper': d_upper, 'lower': d_lower, 'rtn': rtn, 'rtn_label': rtn_label, 'style': d_style
             })
 
     if not log_list:
         st.write("📆 최근 20일 동안 발생한 특이 매수/매도 신호가 없습니다. 평온한 추세 구간입니다.")
     else:
+        # 1) 🆕 CSS 테두리와 패딩, 폰트 색상을 '강제 지정(!important)'하여 가독성 확보
         table_data = []
         for item in reversed(log_list):
-            rtn_color = "green" if item['rtn'] >= 0 else "red"
-            bg_style = ""
-            if item['style'] == "bold_buy":
-                bg_style = "style='background-color: rgba(46, 204, 113, 0.15); font-weight: bold;'"
-            elif item['style'] == "bold_sell":
-                bg_style = "style='background-color: rgba(231, 76, 60, 0.15); font-weight: bold;'"
+            # 수익률 텍스트 색상 및 강조 세팅
+            rtn_color = "#27ae60" if item['rtn'] >= 0 else "#c0392b"
             
-            target_band_str = f"🔴 과열선: {item['upper']:.2f}" if "매도" in item['type'] else f"🟢 과침체선: {item['lower']:.2f}"
+            # 행별 배경색 테마 강제 주입
+            bg_style = "background-color: #ffffff;"
+            if item['style'] == "bold_buy":
+                bg_style = "background-color: #e8f8f5; font-weight: bold;" # 은은한 민트색
+            elif item['style'] == "bold_sell":
+                bg_style = "background-color: #fce4d6; font-weight: bold;" # 은은한 붕홍색
+            elif item['style'] == "wait_buy":
+                bg_style = "background-color: #fef9e7;" # 은은한 노란색
+            elif item['style'] == "wait_sell":
+                bg_style = "background-color: #f5eef8;" # 은은한 보라색
+            
+            target_band_str = f"과열선: {item['upper']:.2f}" if "매도" in item['type'] else f"침체선: {item['lower']:.2f}"
             
             table_data.append(f"""
-                <tr {bg_style}>
-                    <td style='padding: 8px; border-bottom: 1px solid #ddd;'>{item['date']}</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #ddd;'>{item['type']}</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #ddd; font-weight:bold; color:#1f77b4;'>{item['nsi']:.3f}</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #ddd; color:#555;'>{target_band_str}</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #ddd;'>${item['price']:.2f}</td>
-                    <td style='padding: 8px; border-bottom: 1px solid #ddd; color: {rtn_color};'>{item['rtn_label']}: {item['rtn']:+.2f}%</td>
+                <tr style='{bg_style}'>
+                    <td style='padding: 12px 10px !important; border: 1px solid #d1d5db !important; text-align: center !important; color: #111827 !important;'>{item['date']}</td>
+                    <td style='padding: 12px 10px !important; border: 1px solid #d1d5db !important; text-align: left !important; color: #111827 !important;'>{item['type']}</td>
+                    <td style='padding: 12px 10px !important; border: 1px solid #d1d5db !important; text-align: center !important; font-weight: bold !important; color: #1c3d5a !important;'>{item['nsi']:.3f}</td>
+                    <td style='padding: 12px 10px !important; border: 1px solid #d1d5db !important; text-align: center !important; color: #4b5563 !important;'>{target_band_str}</td>
+                    <td style='padding: 12px 10px !important; border: 1px solid #d1d5db !important; text-align: right !important; color: #111827 !important;'>${item['price']:.2f}</td>
+                    <td style='padding: 12px 10px !important; border: 1px solid #d1d5db !important; text-align: right !important; font-weight: bold !important; color: {rtn_color} !important;'>{item['rtn_label']}: {item['rtn']:+.2f}%</td>
                 </tr>
             """)
             
+        # 🆕 격자 선이 완벽하게 드러나도록 table 태그 스타일에 border-collapse 및 1px solid 격자 부여
         html_table = f"""
-        <table style='width:100%; border-collapse: collapse; text-align: left; margin-bottom: 25px;'>
-            <thead>
-                <tr style='background-color: #f2f2f2; border-bottom: 2px solid #ccc;'>
-                    <th style='padding: 10px;'>📅 발생 일자</th>
-                    <th style='padding: 10px;'>🚦 신호 구분</th>
-                    <th style='padding: 10px;'>📊 당시 NSI 지수</th>
-                    <th style='padding: 10px;'>🎯 당시 돌파 기준선</th>
-                    <th style='padding: 10px;'>💵 신호 당시 주가</th>
-                    <th style='padding: 10px;'>📈 현재 성적</th>
-                </tr>
-            </thead>
-            <tbody>
-                {"".join(table_data)}
-            </tbody>
-        </table>
+        <div style='overflow-x: auto;'>
+            <table style='width:100% !important; border-collapse: collapse !important; border: 2px solid #9ca3af !important; font-family: sans-serif !important; margin-bottom: 25px;'>
+                <thead>
+                    <tr style='background-color: #e5e7eb !important; border-bottom: 2px solid #9ca3af !important;'>
+                        <th style='padding: 12px 10px !important; border: 1px solid #9ca3af !important; text-align: center !important; color: #111827 !important;'>📅 발생 일자</th>
+                        <th style='padding: 12px 10px !important; border: 1px solid #9ca3af !important; text-align: center !important; color: #111827 !important;'>🚦 신호 구분</th>
+                        <th style='padding: 12px 10px !important; border: 1px solid #9ca3af !important; text-align: center !important; color: #111827 !important;'>📊 당시 NSI</th>
+                        <th style='padding: 12px 10px !important; border: 1px solid #9ca3af !important; text-align: center !important; color: #111827 !important;'>🎯 기준선</th>
+                        <th style='padding: 12px 10px !important; border: 1px solid #9ca3af !important; text-align: center !important; color: #111827 !important;'>💵 당시 주가</th>
+                        <th style='padding: 12px 10px !important; border: 1px solid #9ca3af !important; text-align: center !important; color: #111827 !important;'>📈 현재 성적</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {"".join(table_data)}
+                </tbody>
+            </table>
+        </div>
         """
         st.markdown(html_table, unsafe_allow_html=True)
 
