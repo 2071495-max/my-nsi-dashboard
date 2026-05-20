@@ -51,10 +51,15 @@ st.sidebar.subheader("🕸️ 그물망 구조 제어")
 max_ma = st.sidebar.slider("그물망 최대 장기 이평선 (일)", 30, 200, 40, step=10)
 ma_interval = st.sidebar.slider("이평선 간격 (일)", 2, 10, 3)
 
-# 3. 데이터 수집 및 NSI 연산 로직
+# 3. 데이터 수집 및 NSI 연산 로직 (안전성 강화 버전)
 @st.cache_data(ttl=3600)
 def load_and_calc_nsi(ticker, period, nsi_window, bb_std, max_ma, ma_interval):
-    df = yf.download(ticker, period=period)
+    # 💡 데이터 개수 부족 에러를 방지하기 위해 period가 1y일 때 내부적으로 여유있게 가져옵니다.
+    fetch_period = period
+    if period == "1y":
+        fetch_period = "2y"
+        
+    df = yf.download(ticker, period=fetch_period)
     if df.empty:
         return pd.DataFrame()
     
@@ -83,12 +88,21 @@ def load_and_calc_nsi(ticker, period, nsi_window, bb_std, max_ma, ma_interval):
     df['NSI_Lower'] = df['NSI_MA'] - (bb_std * df['NSI_STD'])
     
     df.attrs['ma_cols'] = ma_cols
-    return df.dropna()
+    
+    # dropna 이후 데이터가 완전히 비어버리거나 부족해지는 버그 방어
+    df_cleaned = df.dropna()
+    
+    # 사용자가 원래 요청한 기간(1y 등)만큼만 최종 슬라이싱하여 일관성 유지
+    if period == "1y":
+        df_cleaned = df_cleaned.tail(252)
+        
+    return df_cleaned
 
 df = load_and_calc_nsi(ticker, period, nsi_window, bb_std, max_ma, ma_interval)
 
-if df.empty:
-    st.error("티커가 유효하지 않거나 주가 데이터를 불러올 수 없습니다. 사이드바의 영문 티커 스펠링을 확인해 주세요.")
+# 데이터 최소 길이 점검 (최소 22거래일 이상이 확보되어야 오류가 안 남)
+if df.empty or len(df) < 25:
+    st.error("티커가 유효하지 않거나 분석에 필요한 데이터 개수가 부족합니다. 데이터 조회 기간을 '2y' 이상으로 늘려보세요.")
 else:
     ma_cols = df.attrs['ma_cols']
     
@@ -212,7 +226,7 @@ else:
                 "💵 당시 주가": f"${past_price:.2f}",
                 "📈 현재 성적": f"{rtn_label}: {rtn:+.2f}%",
                 "_bg_color": bg_color,
-                "_is_positive": bool(rtn >= 0)  # 🚨 [안전성 업그레이드] 확실하게 파이썬 순정 Boolean형태로 변환하여 매핑 버그 차단
+                "_is_positive": bool(rtn >= 0)
             })
 
     if not rows:
@@ -220,19 +234,13 @@ else:
     else:
         summary_df = pd.DataFrame(list(reversed(rows)))
         
-        # 🆕 [Styler 함수 전면 교체] 행 인덱스가 깨져도 데이터 컬럼값을 직접 타격하도록 람다 함수 기반으로 수정
         def apply_row_styles(df_data):
             style_matrix = pd.DataFrame('', index=df_data.index, columns=df_data.columns)
-            
-            # 1. 행별 배경색 지정
             for i in range(len(df_data)):
                 row_bg = df_data.iloc[i]['_bg_color']
                 is_pos = df_data.iloc[i]['_is_positive']
                 
-                # 기본 배경색 지정
                 style_matrix.iloc[i] = f"background-color: {row_bg};"
-                
-                # '현재 성적' 셀은 플러스/마이너스 여부에 따라 텍스트 컬러 오버레이
                 text_color = '#27ae60' if is_pos else '#c0392b'
                 style_matrix.iloc[i, style_matrix.columns.get_loc('📈 현재 성적')] = f"background-color: {row_bg}; color: {text_color}; font-weight: bold;"
                 
