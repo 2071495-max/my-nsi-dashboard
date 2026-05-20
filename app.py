@@ -142,12 +142,12 @@ else:
     st.markdown("---")
     
     # ----------------------------------------------------
-    # [과거 20일 신호 복기 및 수익률 백트래킹 로그 + 표 구조화]
+    # [과거 20일 신호 복기 데이터프레임 빌드 빌드업]
     # ----------------------------------------------------
     st.subheader("⏰ 과거 20일간의 매매 신호 추적 및 현재 수익률 복기")
     
     log_df = df.tail(22).copy()
-    log_list = []
+    rows = []
     
     for i in range(2, len(log_df)):
         t_day = log_df.iloc[i]
@@ -159,7 +159,7 @@ else:
         d_upper = float(t_day['NSI_Upper'])
         
         d_type = ""
-        d_style = "normal" 
+        style_key = "normal"
         
         w_buy1 = (float(y_day['NSI']) < float(y_day['NSI_Lower'])) and (float(y_day['NSI']) > float(t_2_day['NSI']))
         i_buy2 = d_nsi > float(y_day['NSI'])
@@ -168,17 +168,17 @@ else:
         i_sell2 = d_nsi < float(y_day['NSI'])
         
         if w_buy1 and i_buy2:
-            d_type = "🟩 매수 컨펌 (2일차)"
-            d_style = "bold_buy"
+            d_type = "🟢 매수 컨펌 (2일차)"
+            style_key = "bold_buy"
         elif w_sell1 and i_sell2:
-            d_type = "🟥 매도 컨펌 (2일차)"
-            d_style = "bold_sell"
+            d_type = "🔴 매도 컨펌 (2일차)"
+            style_key = "bold_sell"
         elif (d_nsi < d_lower) and (d_nsi > float(y_day['NSI'])):
-            d_type = "🟧 매수 대기 (1일차)"
-            d_style = "wait_buy"
+            d_type = "🔸 매수 대기 (1일차)"
+            style_key = "wait_buy"
         elif (d_nsi > d_upper) and (d_nsi < float(y_day['NSI'])):
-            d_type = "🟪 매도 대기 (1일차)"
-            d_style = "wait_sell"
+            d_type = "🔹 매도 대기 (1일차)"
+            style_key = "wait_sell"
             
         if d_type != "":
             past_price = float(t_day['Close'])
@@ -191,72 +191,61 @@ else:
                 rtn_label = "가상 수익률"
                 
             date_str = t_day.name.strftime('%Y-%m-%d')
-            log_list.append({
-                'date': date_str, 'type': d_type, 'price': past_price, 
-                'nsi': d_nsi, 'upper': d_upper, 'lower': d_lower, 'rtn': rtn, 'rtn_label': rtn_label, 'style': d_style
+            target_band = d_upper if "매도" in d_type else d_lower
+            
+            rows.append({
+                "📅 발생 일자": date_str,
+                "🚦 신호 구분": d_type,
+                "📊 당시 NSI": round(d_nsi, 3),
+                "🎯 기준선": round(target_band, 2),
+                "💵 당시 주가": f"${past_price:.2f}",
+                "📈 현재 성적": rtn,  # 숫자로 보관 (스타일러 연산용)
+                "rtn_label": rtn_label,
+                "style_key": style_key
             })
 
-    if not log_list:
+    if not rows:
         st.write("📆 최근 20일 동안 발생한 특이 매수/매도 신호가 없습니다. 평온한 추세 구간입니다.")
     else:
-        # 🆕 [해결 가이드] 태그 내부 인라인 스타일 차단을 우회하기 위해 글로벌 스타일시트(CSS) 분리 선언
-        css_style = """
-        <style>
-            .nsi-table { width: 100% !important; border-collapse: collapse !important; border: 2px solid #4b5563 !important; font-family: sans-serif !important; margin-bottom: 25px; background-color: #ffffff; }
-            .nsi-table th { background-color: #e5e7eb !important; border: 1px solid #9ca3af !important; padding: 12px 10px !important; color: #111827 !important; text-align: center !important; font-weight: bold !important; }
-            .nsi-table td { border: 1px solid #d1d5db !important; padding: 12px 10px !important; color: #111827 !important; }
-            .text-center { text-align: center !important; }
-            .text-left { text-align: left !important; }
-            .text-right { text-align: right !important; }
-            .font-bold { font-weight: bold !important; }
-            
-            /* 신호별 테마 클래스 지정 */
-            .row-normal { background-color: #ffffff !important; }
-            .row-bold_buy { background-color: #e8f8f5 !important; font-weight: bold !important; }
-            .row-bold_sell { background-color: #fce4d6 !important; font-weight: bold !important; }
-            .row-wait_buy { background-color: #fef9e7 !important; }
-            .row-wait_sell { background-color: #f5eef8 !important; }
-        </style>
-        """
+        # 최신 데이터가 상단으로 오도록 역순 배치 후 판다스 데이터프레임 변환
+        summary_df = pd.DataFrame(list(reversed(rows)))
         
-        table_data = []
-        for item in reversed(log_list):
-            rtn_color = "color: #27ae60 !important;" if item['rtn'] >= 0 else "color: #c0392b !important;"
-            target_band_str = f"과열선: {item['upper']:.2f}" if "매도" in item['type'] else f"침체선: {item['lower']:.2f}"
-            
-            # 클래스명을 통해 간접적으로 CSS 스타일 매칭
-            table_data.append(f"""
-                <tr class="row-{item['style']}">
-                    <td class="text-center">{item['date']}</td>
-                    <td class="text-left">{item['type']}</td>
-                    <td class="text-center font-bold" style="color: #1c3d5a !important;">{item['nsi']:.3f}</td>
-                    <td class="text-center" style="color: #4b5563 !important;">{target_band_str}</td>
-                    <td class="text-right">${item['price']:.2f}</td>
-                    <td class="text-right font-bold" style="{rtn_color}">{item['rtn_label']}: {item['rtn']:+.2f}%</td>
-                </tr>
-            """)
-            
-        html_table = f"""
-        {css_style}
-        <div style="overflow-x: auto;">
-            <table class="nsi-table">
-                <thead>
-                    <tr>
-                        <th>📅 발생 일자</th>
-                        <th>🚦 신호 구분</th>
-                        <th>📊 당시 NSI</th>
-                        <th>🎯 기준선</th>
-                        <th>💵 당시 주가</th>
-                        <th>📈 현재 성적</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {"".join(table_data)}
-                </tbody>
-            </table>
-        </div>
-        """
-        st.markdown(html_table, unsafe_allow_html=True)
+        # 🆕 [해결책] 순정 Pandas Styler 엔진 정의 (HTML 태그 노출 현상 완전 소멸)
+        def style_rows(row):
+            # 행 전체 배경색 규칙 정의
+            bg_colors = {
+                "bold_buy": "background-color: #e8f8f5;",   # 연초록
+                "bold_sell": "background-color: #fce4d6;",  # 연분홍
+                "wait_buy": "background-color: #fef9e7;",   # 연노랑
+                "wait_sell": "background-color: #f5eef8;"   # 연보라
+            }
+            color = bg_colors.get(row['style_key'], "background-color: #ffffff;")
+            return [color] * len(row)
+
+        # 현재 성적 컬럼 텍스트 포맷팅 함수 (수익률 라벨 결합 및 소수점 2자리 제한)
+        def format_rtn(val, df_ctx, idx):
+            label = df_ctx.loc[idx, 'rtn_label']
+            return f"{label}: {val:+.2f}%"
+
+        # 성적 셀 텍스트 색상 입히기 (양수 초록, 음수 빨강)
+        def color_rtn(val):
+            color = "#27ae60" if val >= 0 else "#c0392b"
+            return f"color: {color}; font-weight: bold;"
+
+        # 렌더링용 임시 인덱스 보존 및 정렬 구조화
+        formatted_dict = {}
+        for idx, row in summary_df.iterrows():
+            formatted_dict[idx] = format_rtn(row['📈 현재 성적'], summary_df, idx)
+
+        # 최종 스타일 적용 및 렌더링
+        styler = summary_df.style.apply(style_rows, axis=1) \
+            .applymap(color_rtn, subset=["📈 현재 성적"]) \
+            .format(formatter=formatted_dict, subset=["📈 현재 성적"]) \
+            .hide(axis="index") \
+            .hide(subset=["rtn_label", "style_key"], axis="columns") # 스타일 계산용 히든 컬럼 숨기기
+
+        # Streamlit 순정 데이터 테이블 전송 (가로폭 전체 확장)
+        st.dataframe(styler, use_container_width=True)
 
     st.markdown("---")
     
