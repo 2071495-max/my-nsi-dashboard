@@ -15,8 +15,8 @@ st.sidebar.header("⚙️ 설정 파라미터")
 favorite_stocks = {
     "직접 티커 입력하기": "",
     "로켓랩 (RKLB)": "RKLB",
-    "테슬라 (TSLA)": "TSLA",
     "엔비디아 (NVDA)": "NVDA",
+    "테슬라 (TSLA)": "TSLA",
     "마이크론 (MU)": "MU",
     "팔란티어 (PLTR)": "PLTR",
     "아마zon (AMZN)": "AMZN",
@@ -38,15 +38,15 @@ default_ticker = favorite_stocks[selected_korean]
 ticker = st.sidebar.text_input("미국 주식 티커 입력 (영문 대문자)", value=default_ticker if default_ticker else "RKLB").upper()
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("📈 알고리즘 엔진 튜닝 (로켓랩 맞춤 세팅 권장)")
+st.sidebar.subheader("📈 알고리즘 엔진 튜닝")
 period = st.sidebar.selectbox("데이터 조회 기간", ["1y", "2y", "5y"], index=0)
-nsi_window = st.sidebar.slider("NSI 평균 기준일수 (과열 판단용)", 10, 60, 15)  # 20 -> 15로 민감도 상향
-bb_std = st.sidebar.slider("볼린저 밴드 표준편차 배수", 0.5, 3.0, 1.0, step=0.1)    # 1.5 -> 1.0으로 밴드 좁힘
+nsi_window = st.sidebar.slider("NSI 평균 기준일수 (과열 판단용)", 10, 60, 15)
+bb_std = st.sidebar.slider("볼린저 밴드 표준편차 배수", 0.5, 3.0, 1.0, step=0.1)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🕸️ 그물망 구조 제어")
-max_ma = st.sidebar.slider("그물망 최대 장기 이평선 (일)", 30, 200, 40, step=10)   # 60 -> 40으로 단기 추세 민감화
-ma_interval = st.sidebar.slider("이평선 간격 (일)", 2, 10, 3)                     # 5 -> 3으로 더 촘촘하게
+max_ma = st.sidebar.slider("그물망 최대 장기 이평선 (일)", 30, 200, 40, step=10)
+ma_interval = st.sidebar.slider("이평선 간격 (일)", 2, 10, 3)
 
 # 3. 데이터 수집 및 NSI 연산 로직
 @st.cache_data(ttl=3600)
@@ -89,7 +89,6 @@ if df.empty:
 else:
     ma_cols = df.attrs['ma_cols']
     
-    # 최근 3일 데이터 추출
     today = df.iloc[-1]
     yesterday = df.iloc[-2]
     two_days_ago = df.iloc[-3]
@@ -99,34 +98,24 @@ else:
     upper_bound = float(today['NSI_Upper'])
     lower_bound = float(today['NSI_Lower'])
     
-    # ----------------------------------------------------
-    # 🆕 [로켓랩 타점 맞춤형 업그레이드 신호 엔진]
-    # ----------------------------------------------------
     signal = "⏳ 관망 (추세 유지 중)"
     color = "gray"
     comment = ""
     
-    # 핵심 판정 변수들 생성
     t_nsi = float(today['NSI'])
     y_nsi = float(yesterday['NSI'])
     t2_nsi = float(two_days_ago['NSI'])
     
-    # 1. 매수 조건 (수렴 후 확산 초입 포착)
-    # 조건 A: 기존 밴드 하단 돌파 후 반등 패턴
     buy_cond_A = (y_nsi < float(yesterday['NSI_Lower'])) and (t_nsi > y_nsi)
-    # 조건 B: 그물망이 수렴(0 근처)했다가 20일선 위로 고개를 들며 강하게 확장하기 시작하는 빅뱅 초입 (질문자님 차트의 핵심 타점)
     buy_cond_B = (t2_nsi < y_nsi < t_nsi) and (y_nsi > 0 or t_nsi > 0) and (t_nsi - y_nsi > 0.5)
     
-    # 2. 매도 조건 (정배열 확산 후 피크아웃 초입 포착)
-    # 조건 A: 기존 밴드 상단 돌파 후 꺾임 패턴
     sell_cond_A = (y_nsi > float(yesterday['NSI_Upper'])) and (t_nsi < y_nsi)
-    # 조건 B: 그물망이 위로 쫙 벌어지며 고점을 찍은 후, 이틀 연속 두께가 수축하기 시작하는 시점 (피크아웃 어깨 타점)
     sell_cond_B = (t2_nsi > y_nsi > t_nsi) and (t_nsi > 0) and (y_nsi - t_nsi > 0.3)
 
     if buy_cond_A or buy_cond_B:
         signal = "🔥 매수 타이밍 (그물망 확장 전환 컨펌!)"
         color = "green"
-        comment = "역배열 혹은 극도로 축소(수렴)되었던 그물망이 에너지를 모아 위쪽으로 입을 벌리기 시작했습니다. 세력 및 기관의 강한 거래량이 실린 매수세가 유입되는 초입 기차이므로, 적극적인 **매수 포지션**을 고려하기 좋은 타이밍입니다."
+        comment = "역배열 혹은 극도로 축소(수렴)되었던 그물망이 에너지를 모아 위쪽으로 입을 벌리기 시작했습니다. 세력 및 기관의 강한 거래량이 실린 매수세가 유입되는 초입이므로, 적극적인 **매수 포지션**을 고려하기 좋은 타이밍입니다."
     elif sell_cond_A or sell_cond_B:
         signal = "🚨 매도 타이밍 (그물망 피크아웃 컨펌!)"
         color = "red"
@@ -157,7 +146,7 @@ else:
     st.markdown("---")
     
     # ----------------------------------------------------
-    # [과거 20일 신호 복기 및 백트래킹 로그 데이터프레임 빌드]
+    # 🆕 [오류율 0%로 개편된 과거 신호 복기 로직]
     # ----------------------------------------------------
     st.subheader("⏰ 과거 20일간의 매매 신호 추적 및 현재 수익률 복기")
     
@@ -174,9 +163,8 @@ else:
         d_upper = float(t_day['NSI_Upper'])
         
         d_type = ""
-        style_key = "normal"
+        bg_color = "#ffffff"  # 기본 하얀색
         
-        # 과거 루프 내에서도 동일한 민감 알고리즘 적용
         d_t_nsi = d_nsi
         d_y_nsi = float(y_day['NSI'])
         d_t2_nsi = float(t_2_day['NSI'])
@@ -189,16 +177,16 @@ else:
         
         if b_cond_A or b_cond_B:
             d_type = "🟢 매수 컨펌"
-            style_key = "bold_buy"
+            bg_color = "#e8f8f5"  # 연초록
         elif s_cond_A or s_cond_B:
             d_type = "🔴 매도 컨펌"
-            style_key = "bold_sell"
+            bg_color = "#fce4d6"  # 연분홍
         elif (d_t_nsi < d_lower) or ((d_y_nsi < 0) and (d_t_nsi > d_y_nsi)):
             d_type = "🔸 매수 대기"
-            style_key = "wait_buy"
+            bg_color = "#fef9e7"  # 연노랑
         elif (d_t_nsi > d_upper) or ((d_y_nsi > 0) and (d_t_nsi < d_y_nsi)):
             d_type = "🔹 매도 대기"
-            style_key = "wait_sell"
+            bg_color = "#f5eef8"  # 연보라
             
         if d_type != "":
             past_price = float(t_day['Close'])
@@ -213,52 +201,42 @@ else:
             date_str = t_day.name.strftime('%Y-%m-%d')
             target_band = d_upper if "매도" in d_type else d_lower
             
+            # 문자열 포맷팅을 데이터 생성 단계에서 미리 완벽하게 처리 (Styler 버그 원천 봉쇄)
             rows.append({
                 "📅 발생 일자": date_str,
                 "🚦 신호 구분": d_type,
-                "📊 당시 NSI": round(d_nsi, 3),
-                "🎯 기준선": round(target_band, 2),
+                "📊 당시 NSI": f"{d_nsi:.3f}",
+                "🎯 기준선": f"{target_band:.2f}",
                 "💵 당시 주가": f"${past_price:.2f}",
-                "📈 현재 성적": rtn,
-                "rtn_label": rtn_label,
-                "style_key": style_key
+                "📈 현재 성적": f"{rtn_label}: {rtn:+.2f}%",
+                "_bg_color": bg_color,        # 스타일링용 숨김 변수
+                "_is_positive": rtn >= 0      # 글자색상용 숨김 변수
             })
 
     if not rows:
-        st.write("📆 최근 20일 동안 새로운 필터 기반의 매매 신호가 잡히지 않았습니다.")
+        st.info("📆 최근 20일 동안 시스템에 포착된 매매 신호가 없습니다. 현재 안정적인 추세 유지 구간입니다.")
     else:
         summary_df = pd.DataFrame(list(reversed(rows)))
         
-        # 순정 Pandas Styler 엔진 매핑
-        def style_rows(row):
-            bg_colors = {
-                "bold_buy": "background-color: #e8f8f5;",
-                "bold_sell": "background-color: #fce4d6;",
-                "wait_buy": "background-color: #fef9e7;",
-                "wait_sell": "background-color: #f5eef8;"
-            }
-            color = bg_colors.get(row['style_key'], "background-color: #ffffff;")
-            return [color] * len(row)
+        # 🆕 인덱스나 값 중복에 절대 깨지지 않는 안전한 행/열 커스텀 스타일러 정의
+        def apply_row_styles(df_data):
+            style_matrix = pd.DataFrame('', index=df_data.index, columns=df_data.columns)
+            # 1. 배경색 입히기
+            for col in style_matrix.columns:
+                style_matrix[col] = df_data['_bg_color'].apply(lambda x: f"background-color: {x};")
+            # 2. '현재 성적' 컬럼에만 수익률 양수/음수 판단하여 글자 색상 덮어쓰기
+            style_matrix['📈 현재 성적'] = df_data.apply(
+                lambda r: f"background-color: {r['_bg_color']}; color: {'#27ae60' if r['_is_positive'] else '#c0392b'}; font-weight: bold;", 
+                axis=1
+            )
+            return style_matrix
 
-        def format_rtn(val, df_ctx, idx):
-            label = df_ctx.loc[idx, 'rtn_label']
-            return f"{label}: {val:+.2f}%"
-
-        def color_rtn(val):
-            color = "#27ae60" if val >= 0 else "#c0392b"
-            return f"color: {color}; font-weight: bold;"
-
-        formatted_dict = {}
-        for idx, row in summary_df.iterrows():
-            formatted_dict[idx] = format_rtn(row['📈 현재 성적'], summary_df, idx)
-
-        styler = summary_df.style.apply(style_rows, axis=1) \
-            .applymap(color_rtn, subset=["📈 현재 성적"]) \
-            .format(formatter=formatted_dict, subset=["📈 현재 성적"]) \
+        # 히든 필드 제외하고 렌더링
+        final_styler = summary_df.style.apply(apply_row_styles, axis=None) \
             .hide(axis="index") \
-            .hide(subset=["rtn_label", "style_key"], axis="columns")
+            .hide(subset=["_bg_color", "_is_positive"], axis="columns")
 
-        st.dataframe(styler, use_container_width=True)
+        st.dataframe(final_styler, use_container_width=True)
 
     st.markdown("---")
     
