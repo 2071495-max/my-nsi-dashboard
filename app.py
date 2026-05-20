@@ -158,7 +158,6 @@ else:
         d_lower = float(t_day['NSI_Lower'])
         d_upper = float(t_day['NSI_Upper'])
         
-        d_signal = None
         d_type = ""
         d_style = "normal" 
         
@@ -200,48 +199,55 @@ else:
     if not log_list:
         st.write("📆 최근 20일 동안 발생한 특이 매수/매도 신호가 없습니다. 평온한 추세 구간입니다.")
     else:
-        # 1) 🆕 CSS 테두리와 패딩, 폰트 색상을 '강제 지정(!important)'하여 가독성 확보
+        # 🆕 [해결 가이드] 태그 내부 인라인 스타일 차단을 우회하기 위해 글로벌 스타일시트(CSS) 분리 선언
+        css_style = """
+        <style>
+            .nsi-table { width: 100% !important; border-collapse: collapse !important; border: 2px solid #4b5563 !important; font-family: sans-serif !important; margin-bottom: 25px; background-color: #ffffff; }
+            .nsi-table th { background-color: #e5e7eb !important; border: 1px solid #9ca3af !important; padding: 12px 10px !important; color: #111827 !important; text-align: center !important; font-weight: bold !important; }
+            .nsi-table td { border: 1px solid #d1d5db !important; padding: 12px 10px !important; color: #111827 !important; }
+            .text-center { text-align: center !important; }
+            .text-left { text-align: left !important; }
+            .text-right { text-align: right !important; }
+            .font-bold { font-weight: bold !important; }
+            
+            /* 신호별 테마 클래스 지정 */
+            .row-normal { background-color: #ffffff !important; }
+            .row-bold_buy { background-color: #e8f8f5 !important; font-weight: bold !important; }
+            .row-bold_sell { background-color: #fce4d6 !important; font-weight: bold !important; }
+            .row-wait_buy { background-color: #fef9e7 !important; }
+            .row-wait_sell { background-color: #f5eef8 !important; }
+        </style>
+        """
+        
         table_data = []
         for item in reversed(log_list):
-            # 수익률 텍스트 색상 및 강조 세팅
-            rtn_color = "#27ae60" if item['rtn'] >= 0 else "#c0392b"
-            
-            # 행별 배경색 테마 강제 주입
-            bg_style = "background-color: #ffffff;"
-            if item['style'] == "bold_buy":
-                bg_style = "background-color: #e8f8f5; font-weight: bold;" # 은은한 민트색
-            elif item['style'] == "bold_sell":
-                bg_style = "background-color: #fce4d6; font-weight: bold;" # 은은한 붕홍색
-            elif item['style'] == "wait_buy":
-                bg_style = "background-color: #fef9e7;" # 은은한 노란색
-            elif item['style'] == "wait_sell":
-                bg_style = "background-color: #f5eef8;" # 은은한 보라색
-            
+            rtn_color = "color: #27ae60 !important;" if item['rtn'] >= 0 else "color: #c0392b !important;"
             target_band_str = f"과열선: {item['upper']:.2f}" if "매도" in item['type'] else f"침체선: {item['lower']:.2f}"
             
+            # 클래스명을 통해 간접적으로 CSS 스타일 매칭
             table_data.append(f"""
-                <tr style='{bg_style}'>
-                    <td style='padding: 12px 10px !important; border: 1px solid #d1d5db !important; text-align: center !important; color: #111827 !important;'>{item['date']}</td>
-                    <td style='padding: 12px 10px !important; border: 1px solid #d1d5db !important; text-align: left !important; color: #111827 !important;'>{item['type']}</td>
-                    <td style='padding: 12px 10px !important; border: 1px solid #d1d5db !important; text-align: center !important; font-weight: bold !important; color: #1c3d5a !important;'>{item['nsi']:.3f}</td>
-                    <td style='padding: 12px 10px !important; border: 1px solid #d1d5db !important; text-align: center !important; color: #4b5563 !important;'>{target_band_str}</td>
-                    <td style='padding: 12px 10px !important; border: 1px solid #d1d5db !important; text-align: right !important; color: #111827 !important;'>${item['price']:.2f}</td>
-                    <td style='padding: 12px 10px !important; border: 1px solid #d1d5db !important; text-align: right !important; font-weight: bold !important; color: {rtn_color} !important;'>{item['rtn_label']}: {item['rtn']:+.2f}%</td>
+                <tr class="row-{item['style']}">
+                    <td class="text-center">{item['date']}</td>
+                    <td class="text-left">{item['type']}</td>
+                    <td class="text-center font-bold" style="color: #1c3d5a !important;">{item['nsi']:.3f}</td>
+                    <td class="text-center" style="color: #4b5563 !important;">{target_band_str}</td>
+                    <td class="text-right">${item['price']:.2f}</td>
+                    <td class="text-right font-bold" style="{rtn_color}">{item['rtn_label']}: {item['rtn']:+.2f}%</td>
                 </tr>
             """)
             
-        # 🆕 격자 선이 완벽하게 드러나도록 table 태그 스타일에 border-collapse 및 1px solid 격자 부여
         html_table = f"""
-        <div style='overflow-x: auto;'>
-            <table style='width:100% !important; border-collapse: collapse !important; border: 2px solid #9ca3af !important; font-family: sans-serif !important; margin-bottom: 25px;'>
+        {css_style}
+        <div style="overflow-x: auto;">
+            <table class="nsi-table">
                 <thead>
-                    <tr style='background-color: #e5e7eb !important; border-bottom: 2px solid #9ca3af !important;'>
-                        <th style='padding: 12px 10px !important; border: 1px solid #9ca3af !important; text-align: center !important; color: #111827 !important;'>📅 발생 일자</th>
-                        <th style='padding: 12px 10px !important; border: 1px solid #9ca3af !important; text-align: center !important; color: #111827 !important;'>🚦 신호 구분</th>
-                        <th style='padding: 12px 10px !important; border: 1px solid #9ca3af !important; text-align: center !important; color: #111827 !important;'>📊 당시 NSI</th>
-                        <th style='padding: 12px 10px !important; border: 1px solid #9ca3af !important; text-align: center !important; color: #111827 !important;'>🎯 기준선</th>
-                        <th style='padding: 12px 10px !important; border: 1px solid #9ca3af !important; text-align: center !important; color: #111827 !important;'>💵 당시 주가</th>
-                        <th style='padding: 12px 10px !important; border: 1px solid #9ca3af !important; text-align: center !important; color: #111827 !important;'>📈 현재 성적</th>
+                    <tr>
+                        <th>📅 발생 일자</th>
+                        <th>🚦 신호 구분</th>
+                        <th>📊 당시 NSI</th>
+                        <th>🎯 기준선</th>
+                        <th>💵 당시 주가</th>
+                        <th>📈 현재 성적</th>
                     </tr>
                 </thead>
                 <tbody>
